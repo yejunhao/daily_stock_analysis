@@ -584,7 +584,7 @@ class GeminiAnalyzer:
             self._router = Router(
                 model_list=model_list,
                 routing_strategy="simple-shuffle",
-                num_retries=2,
+                num_retries=5, # 增加重试次数以处理 429 (Issue #373)
             )
             models_in_router = list(dict.fromkeys(m["litellm_params"]["model"] for m in model_list))
             logger.info(f"Analyzer LLM: Router initialized with {len(keys)} keys for {litellm_model} (models: {models_in_router})")
@@ -642,7 +642,24 @@ class GeminiAnalyzer:
                 else:
                     call_kwargs["api_key"] = keys[0]
                     call_kwargs.update(self._extra_litellm_params(model, config))
-                    response = litellm.completion(**call_kwargs)
+                    
+                    # 429 处理逻辑: 对于单 Key 情形手处理重试
+                    max_retries = getattr(config, 'gemini_max_retries', 5)
+                    retry_delay = getattr(config, 'gemini_retry_delay', 5.0)
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            response = litellm.completion(**call_kwargs)
+                            break
+                        except Exception as e:
+                            # 识别 429 错误
+                            is_quota_error = "429" in str(e) or "quota" in str(e).lower()
+                            if is_quota_error and attempt < max_retries - 1:
+                                wait_time = retry_delay * (2 ** attempt)  # 指数退避
+                                logger.warning(f"[LiteLLM] 429 频率限制, 等待 {wait_time}s 后重试 ({attempt+1}/{max_retries})...")
+                                time.sleep(wait_time)
+                            else:
+                                raise e
 
                 if response and response.choices and response.choices[0].message.content:
                     return response.choices[0].message.content

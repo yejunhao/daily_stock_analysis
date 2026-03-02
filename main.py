@@ -244,14 +244,15 @@ def _compute_trading_day_filter(
         if mkt in open_markets or mkt is None:
             filtered_codes.append(code)
 
-    if config.market_review_enabled and not getattr(args, 'no_market_review', False):
+    if not getattr(config, 'market_review_enabled', True) or getattr(args, 'no_market_review', False):
+        effective_region = '' # Explicitly skip market review
+    else:
+        # Check enabled? (By now we know it is because we returned early at 231 if not)
         effective_region = compute_effective_region(
             getattr(config, 'market_review_region', 'cn') or 'cn', open_markets
         )
-    else:
-        effective_region = None
 
-    should_skip_all = (not filtered_codes) and (effective_region or '') == ''
+    should_skip_all = (not filtered_codes) and (effective_region == '')
     return (filtered_codes, effective_region, should_skip_all)
 
 

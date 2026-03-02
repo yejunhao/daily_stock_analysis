@@ -706,13 +706,16 @@ class StockAnalysisPipeline:
             return df
 
         # Optional: skip augmentation on non-trading days (fail-open)
+        # Issue #373: Respect trading_day_check_enabled
         enable_realtime_tech = getattr(
             self.config, 'enable_realtime_technical_indicators', True
         )
         if not enable_realtime_tech:
             return df
+
+        trading_check = getattr(self.config, 'trading_day_check_enabled', True)
         market = get_market_for_stock(code)
-        if market and not is_market_open(market, date.today()):
+        if trading_check and market and not is_market_open(market, date.today()):
             return df
 
         last_val = df['date'].max()
